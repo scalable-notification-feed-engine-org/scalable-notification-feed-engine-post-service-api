@@ -1,19 +1,39 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { CreatePostDto } from './dto/create-post.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { ClientKafka } from '@nestjs/microservices';
 
 @Injectable()
-export class PostService {
-  constructor(private prisma: PrismaService) {}
+export class PostService implements OnModuleInit {
+  constructor(
+    private prisma: PrismaService,
+    @Inject('POST_KAFKA_CLIENT') private readonly kafkaClient: ClientKafka,
+  ) {}
+
+  async onModuleInit() {
+    this.kafkaClient.subscribeToResponseOf('post.created');
+    await this.kafkaClient.connect();
+  }
 
   async create(createPostDto: CreatePostDto) {
-    return await this.prisma.post.create({
-      data: {
-        content: createPostDto.content,
-        userId: createPostDto.userId,
-        tenantId: createPostDto.tenantId,
-      },
-    });
+    try {
+      const newPost = await this.prisma.post.create({
+        data: {
+          content: createPostDto.content,
+          userId: createPostDto.userId,
+          tenantId: createPostDto.tenantId,
+        },
+      });
+
+      if (newPost) {
+        this.kafkaClient.emit('post.created', newPost);
+      }
+
+      return newPost;
+    } catch (error) {
+      console.error('Error creating post or publishing to Kafka:', error);
+      throw error;
+    }
   }
   // tenantId: string,
   async findAll(currentUserId: string) {
@@ -32,26 +52,50 @@ export class PostService {
   }
 
   async toggleLike(postId: string, userId: string) {
-    return await this.prisma.$transaction(async (tx) => {
-      const existingLike = await tx.like.findUnique({
-        where: { userId_postId: { userId, postId } },
-      });
-      if (existingLike) {
-        await tx.like.delete({ where: { id: existingLike.id } });
+    try {
+      const newLikeAdded = await this.prisma.$transaction(async (tx) => {
+        const existingLike = await tx.like.findUnique({
+          where: { userId_postId: { userId, postId } },
+        });
+        if (existingLike) {
+          await tx.like.delete({ where: { id: existingLike.id } });
+          await tx.post.update({
+            where: { id: postId },
+            data: { likeCount: { decrement: 1 } },
+          });
+          return { like: false };
+        }
+
+        await tx.like.create({ data: { postId, userId } });
         await tx.post.update({
           where: { id: postId },
-          data: { likeCount: { decrement: 1 } },
+          data: { likeCount: { increment: 1 } },
         });
-        return { like: false };
-      }
-
-      await tx.like.create({ data: { postId, userId } });
-      await tx.post.update({
-        where: { id: postId },
-        data: { likeCount: { increment: 1 } },
+        return { like: true };
       });
-      return { like: true };
-    });
+
+      if (newLikeAdded) {
+        const savedPost = await this.prisma.post.findUnique({
+          where: {
+            id: postId,
+          },
+        });
+
+        if (!savedPost) {
+          return;
+        }
+
+        const data = {
+          postId: postId,
+          likeCount: savedPost.likeCount,
+        };
+
+        this.kafkaClient.emit('post.liked', data);
+        return savedPost;
+      }
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   async addComment(postId: string, userId: string, content: string) {
