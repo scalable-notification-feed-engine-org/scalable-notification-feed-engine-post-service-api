@@ -30,9 +30,6 @@ export class PostController {
     @Param('id') postId: string,
     @Body() createCommentDto: CreateCommentDto,
   ) {
-
-    console.log("addComment",  createCommentDto.userId);
-
     return await this.postService.addComment(
       postId,
       createCommentDto.userId,
