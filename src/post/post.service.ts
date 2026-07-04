@@ -20,7 +20,7 @@ export class PostService implements OnModuleInit {
       const newPost = await this.prisma.post.create({
         data: {
           content: createPostDto.content,
-          userId: createPostDto.userId,
+          userId: createPostDto.author.id,
           tenantId: createPostDto.tenantId,
         },
       });
@@ -35,7 +35,7 @@ export class PostService implements OnModuleInit {
       throw error;
     }
   }
-  // tenantId: string,
+
   async findAll(currentUserId: string) {
     const posts = await this.prisma.post.findMany({
       include: {
