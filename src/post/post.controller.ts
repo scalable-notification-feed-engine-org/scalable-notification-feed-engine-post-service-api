@@ -11,7 +11,7 @@ export class PostController {
   create(@Body() createPostDto: CreatePostDto) {
     return this.postService.create(createPostDto);
   }
-  // @Query('tenantId') tenantId: string,
+
   @Get()
   findAll(@Query('userId') userId: string) {
     return this.postService.findAll(userId);
