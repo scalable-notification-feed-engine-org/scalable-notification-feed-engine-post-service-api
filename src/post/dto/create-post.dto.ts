@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { Author } from './author';
 
 export class CreatePostDto {
@@ -14,4 +14,6 @@ export class CreatePostDto {
   @IsString()
   @IsOptional()
   mediaUrl: string[];
+  @IsBoolean()
+  isLike: boolean;
 }
