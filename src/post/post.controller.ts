@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Headers,
+} from '@nestjs/common';
 import { PostService } from './post.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
@@ -19,10 +27,10 @@ export class PostController {
 
   @Post(':id/like')
   async togglePostLike(
+    @Headers('x-user-id') loginUserId: string,
     @Param('id') postId: string,
-    @Body('userId') userId: string,
   ) {
-    return await this.postService.toggleLike(postId, userId);
+    return await this.postService.toggleLike(postId, loginUserId);
   }
 
   @Post(':id/comment')
