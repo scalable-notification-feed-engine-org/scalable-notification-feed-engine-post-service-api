@@ -25,8 +25,20 @@ export class PostService implements OnModuleInit {
         },
       });
 
+      const kafkaPost = {
+        id: newPost.id,
+        content: newPost.content,
+        userId: newPost.userId,
+        tenantId: newPost.tenantId,
+        createdAt: newPost.createdAt,
+        updatedAt: newPost.updatedAt,
+        likeCount: newPost.likeCount,
+        isLike: false,
+        commentCount: newPost.commentCount,
+      };
+
       if (newPost) {
-        this.kafkaClient.emit('post.created', newPost);
+        this.kafkaClient.emit('post.created', kafkaPost);
       }
 
       return newPost;
@@ -47,13 +59,13 @@ export class PostService implements OnModuleInit {
     });
     return posts.map((post) => ({
       ...post,
-      isLiked: post.likes.length > 0,
+      isLike: post.likes.length > 0,
     }));
   }
 
   async toggleLike(postId: string, userId: string) {
     try {
-      const newLikeAdded = await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const existingLike = await tx.like.findUnique({
           where: { userId_postId: { userId, postId } },
         });
@@ -63,7 +75,7 @@ export class PostService implements OnModuleInit {
             where: { id: postId },
             data: { likeCount: { decrement: 1 } },
           });
-          return { like: false };
+          return { isLiked: false };
         }
 
         await tx.like.create({ data: { postId, userId } });
@@ -71,28 +83,29 @@ export class PostService implements OnModuleInit {
           where: { id: postId },
           data: { likeCount: { increment: 1 } },
         });
-        return { like: true };
+        return { isLiked: true };
       });
 
-      if (newLikeAdded) {
-        const savedPost = await this.prisma.post.findUnique({
-          where: {
-            id: postId,
-          },
-        });
+      const savedPost = await this.prisma.post.findUnique({
+        where: {
+          id: postId,
+        },
+      });
 
-        if (!savedPost) {
-          return;
-        }
-
-        const data = {
-          postId: postId,
-          likeCount: savedPost.likeCount,
-        };
-
-        this.kafkaClient.emit('post.liked', data);
-        return savedPost;
+      if (!savedPost) {
+        return;
       }
+
+      const data = {
+        postId: postId,
+        userId: userId,
+        likeCount: savedPost.likeCount,
+        isLike: result.isLiked,
+      };
+
+      this.kafkaClient.emit('post.liked', data);
+
+      return savedPost;
     } catch (error) {
       console.error(error);
     }
